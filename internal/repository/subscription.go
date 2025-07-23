@@ -66,19 +66,37 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 }
 
 // Update modifies fields of a subscription specified in updates map and returns the updated subscription
-func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, updates map[string]interface{}) (*models.Subscription, error) {
-	if len(updates) == 0 {
-		return r.GetByID(ctx, id)
-	}
-
-	setParts := make([]string, 0, len(updates))
-	args := make([]interface{}, 0, len(updates)+1)
+func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, updates *models.SubscriptionUpdates) (*models.Subscription, error) {
+	setParts := []string{}
+	args := []interface{}{}
 	argIndex := 1
 
-	for field, value := range updates {
-		setParts = append(setParts, fmt.Sprintf("%s = $%d", field, argIndex))
-		args = append(args, value)
+	if updates.ServiceName != nil {
+		setParts = append(setParts, fmt.Sprintf("service_name = $%d", argIndex))
+		args = append(args, *updates.ServiceName)
 		argIndex++
+	}
+
+	if updates.Price != nil {
+		setParts = append(setParts, fmt.Sprintf("price = $%d", argIndex))
+		args = append(args, *updates.Price)
+		argIndex++
+	}
+
+	if updates.StartDate != nil {
+		setParts = append(setParts, fmt.Sprintf("start_date = $%d", argIndex))
+		args = append(args, *updates.StartDate)
+		argIndex++
+	}
+
+	if updates.EndDate != nil {
+		setParts = append(setParts, fmt.Sprintf("end_date = $%d", argIndex))
+		args = append(args, *updates.EndDate)
+		argIndex++
+	}
+
+	if len(setParts) == 0 {
+		return r.GetByID(ctx, id)
 	}
 
 	args = append(args, id)

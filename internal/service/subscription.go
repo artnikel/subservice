@@ -4,9 +4,9 @@ package service
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
+	cerrors "github.com/artnikel/subservice/internal/errors"
 	"github.com/artnikel/subservice/internal/models"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -16,7 +16,7 @@ import (
 type SubscriptionRepository interface {
 	Create(ctx context.Context, subscription *models.Subscription) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Subscription, error)
-	Update(ctx context.Context, id uuid.UUID, updates map[string]interface{}) (*models.Subscription, error)
+	Update(ctx context.Context, id uuid.UUID, updates *models.SubscriptionUpdates) (*models.Subscription, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) ([]models.Subscription, int, error)
 	GetCostSummary(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth, endMonth string) (int, error)
@@ -45,15 +45,15 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, req *model
 	}).Info("Creating new subscription")
 
 	if !s.isValidDateFormat(req.StartDate) {
-		return nil, errors.New("invalid start_date format, expected MM-YYYY")
+		return nil, cerrors.ErrInvalidStartDateFormat
 	}
 
 	if req.EndDate != nil && !s.isValidDateFormat(*req.EndDate) {
-		return nil, errors.New("invalid end_date format, expected MM-YYYY")
+		return nil, cerrors.ErrEndDateBeforeStart
 	}
 
 	if req.EndDate != nil && !s.isEndDateAfterStartDate(req.StartDate, *req.EndDate) {
-		return nil, errors.New("end_date must be after start_date")
+		return nil, cerrors.ErrEndDateBeforeStart
 	}
 
 	subscription := &models.Subscription{
@@ -85,7 +85,7 @@ func (s *SubscriptionService) GetSubscription(ctx context.Context, id uuid.UUID)
 
 	if subscription == nil {
 		s.log.WithField("subscription_id", id).Warn("Subscription not found")
-		return nil, errors.New("subscription not found")
+		return nil, cerrors.ErrSubscriptionNotFound
 	}
 
 	return subscription, nil
@@ -103,31 +103,31 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, id uuid.UU
 
 	if existing == nil {
 		s.log.WithField("subscription_id", id).Warn("Subscription not found for update")
-		return nil, errors.New("subscription not found")
+		return nil, cerrors.ErrSubscriptionNotFound
 	}
 
-	updates := make(map[string]interface{})
+	var updates models.SubscriptionUpdates
 
 	if req.ServiceName != nil {
-		updates["service_name"] = *req.ServiceName
+		updates.ServiceName = req.ServiceName
 	}
 
 	if req.Price != nil {
-		updates["price"] = *req.Price
+		updates.Price = req.Price
 	}
 
 	if req.StartDate != nil {
 		if !s.isValidDateFormat(*req.StartDate) {
-			return nil, errors.New("invalid start_date format, expected MM-YYYY")
+			return nil, cerrors.ErrInvalidStartDateFormat
 		}
-		updates["start_date"] = *req.StartDate
+		updates.StartDate = req.StartDate
 	}
 
 	if req.EndDate != nil {
 		if !s.isValidDateFormat(*req.EndDate) {
-			return nil, errors.New("invalid end_date format, expected MM-YYYY")
+			return nil, cerrors.ErrInvalidEndDateFormat
 		}
-		updates["end_date"] = *req.EndDate
+		updates.EndDate = req.EndDate
 	}
 
 	startDate := existing.StartDate
@@ -136,10 +136,10 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, id uuid.UU
 	}
 
 	if req.EndDate != nil && !s.isEndDateAfterStartDate(startDate, *req.EndDate) {
-		return nil, errors.New("end_date must be after start_date")
+		return nil, cerrors.ErrEndDateBeforeStart
 	}
 
-	subscription, err := s.repo.Update(ctx, id, updates)
+	subscription, err := s.repo.Update(ctx, id, &updates)
 	if err != nil {
 		s.log.WithError(err).Error("Failed to update subscription")
 		return nil, fmt.Errorf("failed to update subscription: %w", err)
@@ -156,7 +156,7 @@ func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id uuid.UU
 	err := s.repo.Delete(ctx, id)
 	if err == sql.ErrNoRows {
 		s.log.WithField("subscription_id", id).Warn("Subscription not found for deletion")
-		return errors.New("subscription not found")
+		return cerrors.ErrSubscriptionNotFound
 	}
 
 	if err != nil {
@@ -219,15 +219,15 @@ func (s *SubscriptionService) GetCostSummary(ctx context.Context, req *models.Co
 	}).Info("Calculating cost summary")
 
 	if !s.isValidDateFormat(req.StartMonth) {
-		return nil, errors.New("invalid start_month format, expected MM-YYYY")
+		return nil, cerrors.ErrInvalidStartMonthFormat
 	}
 
 	if !s.isValidDateFormat(req.EndMonth) {
-		return nil, errors.New("invalid end_month format, expected MM-YYYY")
+		return nil, cerrors.ErrInvalidEndMonthFormat
 	}
 
 	if !s.isEndDateAfterStartDate(req.StartMonth, req.EndMonth) {
-		return nil, errors.New("end_month must be after or equal to start_month")
+		return nil, cerrors.ErrEndMonthBeforeStart
 	}
 
 	totalCost, err := s.repo.GetCostSummary(ctx, req.UserID, req.ServiceName, req.StartMonth, req.EndMonth)

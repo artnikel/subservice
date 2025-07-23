@@ -64,9 +64,6 @@ type ErrorServerResponse struct {
 	Error string `json:"error" example:"Internal server error"`
 }
 
-// ErrSubscriptionNotFound represents an not found subscription error
-const ErrSubscriptionNotFound = "subscription not found"
-
 // ListResponse presents a response with a list of subscriptions
 type ListResponse struct {
 	Data       []Subscription `json:"data"`
@@ -74,4 +71,12 @@ type ListResponse struct {
 	Page       int            `json:"page"`
 	PageSize   int            `json:"page_size"`
 	TotalPages int            `json:"total_pages"`
+}
+
+// SubscriptionUpdates introduces the updates model
+type SubscriptionUpdates struct {
+	ServiceName *string
+	Price       *int
+	StartDate   *string
+	EndDate     *string
 }

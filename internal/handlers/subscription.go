@@ -3,9 +3,11 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
+	cerrors "github.com/artnikel/subservice/internal/errors"
 	"github.com/artnikel/subservice/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -88,7 +90,7 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 
 	subscription, err := h.service.GetSubscription(c, id)
 	if err != nil {
-		if err.Error() == models.ErrSubscriptionNotFound {
+		if errors.Is(err, cerrors.ErrSubscriptionNotFound) {
 			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
@@ -131,7 +133,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 
 	subscription, err := h.service.UpdateSubscription(c, id, &req)
 	if err != nil {
-		if err.Error() == models.ErrSubscriptionNotFound {
+		if errors.Is(err, cerrors.ErrSubscriptionNotFound) {
 			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
@@ -164,7 +166,7 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 
 	err = h.service.DeleteSubscription(c, id)
 	if err != nil {
-		if err.Error() == models.ErrSubscriptionNotFound {
+		if errors.Is(err, cerrors.ErrSubscriptionNotFound) {
 			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
