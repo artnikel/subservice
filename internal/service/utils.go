@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -31,11 +32,21 @@ func (s *SubscriptionService) isValidDateFormat(date string) bool {
 
 // isEndDateAfterStartDate checks if endDate is lexicographically greater or equal to startDate
 func (s *SubscriptionService) isEndDateAfterStartDate(startDate, endDate string) bool {
-	start := strings.Replace(startDate, "-", "", 1)
-	end := strings.Replace(endDate, "-", "", 1)
+	const dateParts = 2
+	parse := func(date string) (int, error) {
+		parts := strings.Split(date, "-")
+		if len(parts) != dateParts {
+			return 0, fmt.Errorf("invalid date format: %s", date)
+		}
+		return strconv.Atoi(parts[1] + parts[0]) // YYYYMM
+	}
 
-	startInt, _ := strconv.Atoi(start)
-	endInt, _ := strconv.Atoi(end)
+	startInt, err1 := parse(startDate)
+	endInt, err2 := parse(endDate)
+
+	if err1 != nil || err2 != nil {
+		return false
+	}
 
 	return endInt >= startInt
 }

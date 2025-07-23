@@ -176,6 +176,7 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+	_, _ = c.Writer.Write([]byte{})
 }
 
 // ListSubscriptions handles GET requests to list subscriptions with optional filters and pagination
