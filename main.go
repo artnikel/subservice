@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/artnikel/subservice/internal/config"
@@ -14,8 +17,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
+	_ "github.com/artnikel/subservice/docs"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+// @title Subscriptions API
+// @version 1.0
+// @description REST API for managing user subscriptions
+// @host localhost:8080
+// @BasePath /api/v1
 func main() {
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
@@ -29,7 +41,7 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
-
+	
 	log.Info("Connected to database successfully")
 
 	repo := repository.NewSubscriptionRepository(db)
@@ -46,6 +58,8 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(logger.GinLogger(log))
 
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	api := router.Group("/api/v1")
 	{
 		subscriptions := api.Group("/subscriptions")
@@ -56,7 +70,7 @@ func main() {
 			subscriptions.PUT("/:id", handler.UpdateSubscription)
 			subscriptions.DELETE("/:id", handler.DeleteSubscription)
 		}
-		api.GET("/cost-summary", handler.GetCostSummary)
+		api.GET("/cost/summary", handler.GetCostSummary)
 	}
 
 	srv := &http.Server{
@@ -73,6 +87,20 @@ func main() {
 		}
 	}()
 
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Info("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Info("Server exited")
 }
 
 func connectPGX(cfg config.DatabaseConfig) (*pgxpool.Pool, error) {

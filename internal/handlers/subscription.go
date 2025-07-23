@@ -32,108 +32,161 @@ func NewSubscriptionHandler(service SubscriptionService, log *logrus.Logger) *Su
 	}
 }
 
+// @Summary Create a subscription
+// @Description Creates a new user subscription
+// @Tags subscriptions
+// @Accept json
+// @Produce json
+// @Param subscription body models.CreateSubscriptionRequest true "Subscription data"
+// @Success 201 {object} models.Subscription
+// @Failure 400 {object} models.ErrorRequestResponse
+// @Failure 500 {object} models.ErrorServerResponse
+// @Router /subscriptions [post]
 func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	var req models.CreateSubscriptionRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.log.WithError(err).Warn("Invalid request body for create subscription")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: err.Error()})
 		return
 	}
 
 	subscription, err := h.service.CreateSubscription(c, &req)
 	if err != nil {
 		h.log.WithError(err).Error("Failed to create subscription")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusCreated, subscription)
 }
 
+// @Summary Get Subscription
+// @Description Gets subscriptions by ID
+// @Tags subscriptions
+// @Produce json
+// @Param id path string true "subscription ID" format(uuid)
+// @Success 200 {object} models.Subscription
+// @Failure 400 {object} models.ErrorRequestResponse
+// @Failure 404 {object} models.ErrorNotFoundResponse
+// @Failure 500 {object} models.ErrorServerResponse
+// @Router /subscriptions/{id} [get]
 func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		h.log.WithError(err).Warn("Invalid subscription ID format")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid subscription ID format"})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: "invalid subscription ID format"})
 		return
 	}
 
 	subscription, err := h.service.GetSubscription(c, id)
 	if err != nil {
 		if err.Error() == "subscription not found" {
-			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
 		h.log.WithError(err).Error("Failed to get subscription")
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal server error"})
+		c.JSON(http.StatusInternalServerError, models.ErrorServerResponse{Error: "internal server error"})
 		return
 	}
 
 	c.JSON(http.StatusOK, subscription)
 }
 
+// @Summary Update Subscription
+// @Description Updates an existing subscription
+// @Tags subscriptions
+// @Accept json
+// @Produce json
+// @Param id path string true "Subscription ID" format(uuid)
+// @Param subscription body models.UpdateSubscriptionRequest true "Update data"
+// @Success 200 {object} models.Subscription
+// @Failure 400 {object} models.ErrorRequestResponse
+// @Failure 404 {object} models.ErrorNotFoundResponse
+// @Failure 500 {object} models.ErrorServerResponse
+// @Router /subscriptions/{id} [put]
 func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		h.log.WithError(err).Warn("Invalid subscription ID format")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid subscription ID format"})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: "invalid subscription ID format"})
 		return
 	}
 
 	var req models.UpdateSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.log.WithError(err).Warn("Invalid request body for update subscription")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: err.Error()})
 		return
 	}
 
 	subscription, err := h.service.UpdateSubscription(c, id, &req)
 	if err != nil {
 		if err.Error() == "subscription not found" {
-			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
 		h.log.WithError(err).Error("Failed to update subscription")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, subscription)
 }
 
+// @Summary Delete Subscription
+// @Description Deletes subscription by ID
+// @Tags subscriptions
+// @Param id path string true "subscription ID" format(uuid)
+// @Success 204
+// @Failure 400 {object} models.ErrorRequestResponse
+// @Failure 404 {object} models.ErrorNotFoundResponse
+// @Failure 500 {object} models.ErrorServerResponse
+// @Router /subscriptions/{id} [delete]
 func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
 		h.log.WithError(err).Warn("Invalid subscription ID format")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid subscription ID format"})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: "invalid subscription ID format"})
 		return
 	}
 
 	err = h.service.DeleteSubscription(c, id)
 	if err != nil {
 		if err.Error() == "subscription not found" {
-			c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
+			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
 		h.log.WithError(err).Error("Failed to delete subscription")
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal server error"})
+		c.JSON(http.StatusInternalServerError, models.ErrorServerResponse{Error: "internal server error"})
 		return
 	}
 
 	c.Status(http.StatusNoContent)
 }
 
+// @Summary Get a list of subscriptions
+// @Description Gets a list of subscriptions with pagination and filtering
+// @Tags subscriptions
+// @Produce json
+// @Param user_id query string false "User ID" format(uuid)
+// @Param service_name query string false "Service name"
+// @Param page query int false "Page number" default(1)
+// @Param page_size query int false "Page size" default(10)
+// @Success 200 {object} models.ListResponse
+// @Failure 400 {object} models.ErrorRequestResponse
+// @Failure 500 {object} models.ErrorServerResponse
+// @Router /subscriptions [get]
 func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	var userID *uuid.UUID
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		id, err := uuid.Parse(userIDStr)
 		if err != nil {
 			h.log.WithError(err).Warn("Invalid user_id format")
-			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid user_id format"})
+			c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: "invalid user_id format"})
 			return
 		}
 		userID = &id
@@ -161,26 +214,38 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	response, err := h.service.ListSubscriptions(c, userID, serviceName, page, pageSize)
 	if err != nil {
 		h.log.WithError(err).Error("Failed to list subscriptions")
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "internal server error"})
+		c.JSON(http.StatusInternalServerError, models.ErrorServerResponse{Error: "internal server error"})
 		return
 	}
 
 	c.JSON(http.StatusOK, response)
 }
 
+// @Summary Calculate total cost
+// @Description Calculates the total cost of subscriptions per period with filtering
+// @Tags subscriptions
+// @Produce json
+// @Param user_id query string false "User ID" format(uuid)
+// @Param service_name query string false "Service name"
+// @Param start_month query string true "Start month" format(MM- YYYY)
+// @Param end_month query string true "End month" format(MM-YYYY)
+// @Success 200 {object} models.CostSummaryResponse
+// @Failure 400 {object} models.ErrorRequestResponse
+// @Failure 500 {object} models.ErrorServerResponse
+// @Router /cost/summary [get]
 func (h *SubscriptionHandler) GetCostSummary(c *gin.Context) {
 	var req models.CostSummaryRequest
 
 	if err := c.ShouldBindQuery(&req); err != nil {
 		h.log.WithError(err).Warn("Invalid query parameters for cost summary")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: err.Error()})
 		return
 	}
 
 	response, err := h.service.GetCostSummary(c, &req)
 	if err != nil {
 		h.log.WithError(err).Error("Failed to calculate cost summary")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: err.Error()})
 		return
 	}
 

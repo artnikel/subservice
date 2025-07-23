@@ -48,9 +48,19 @@ type CostSummaryResponse struct {
 	TotalCost int `json:"total_cost" example:"4800"`
 }
 
-// ErrorResponse represents an error response
-type ErrorResponse struct {
+// ErrorRequestResponse represents an requset error response 
+type ErrorRequestResponse struct {
 	Error string `json:"error" example:"Invalid request"`
+}
+
+// ErrorNotFoundResponse represents an not found error response
+type ErrorNotFoundResponse struct {
+	Error string `json:"error" example:"Not found"`
+}
+
+// ErrorServerResponse represents an server error response
+type ErrorServerResponse struct {
+	Error string `json:"error" example:"Internal server error"`
 }
 
 // ListResponse presents a response with a list of subscriptions
