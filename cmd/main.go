@@ -7,7 +7,8 @@ import (
 
 	"github.com/artnikel/subservice/internal/config"
 	"github.com/artnikel/subservice/internal/logger"
-	//"github.com/artnikel/subservice/internal/repository"
+	// "github.com/artnikel/subservice/internal/repository"
+	// "github.com/artnikel/subservice/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
 )
@@ -28,7 +29,8 @@ func main() {
 
 	log.Info("Connected to database successfully")
 
-	//repo := repository.NewSubscriptionRepository(db)
+	// repo := repository.NewSubscriptionRepository(db)
+	// srv := service.NewSubscriptionService(repo, log)
 
 }
 
