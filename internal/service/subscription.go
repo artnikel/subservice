@@ -8,17 +8,25 @@ import (
 	"regexp"
 
 	"github.com/artnikel/subservice/internal/models"
-	"github.com/artnikel/subservice/internal/repository"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
+type SubscriptionRepository interface {
+	Create(ctx context.Context, subscription *models.Subscription) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Subscription, error)
+	Update(ctx context.Context, id uuid.UUID, updates map[string]interface{}) (*models.Subscription, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) ([]models.Subscription, int, error)
+	GetCostSummary(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth, endMonth string) (int, error)
+}
+
 type SubscriptionService struct {
-	repo *repository.SubscriptionRepository
+	repo SubscriptionRepository
 	log  *logrus.Logger
 }
 
-func NewSubscriptionService(repo *repository.SubscriptionRepository, log *logrus.Logger) *SubscriptionService {
+func NewSubscriptionService(repo SubscriptionRepository, log *logrus.Logger) *SubscriptionService {
 	return &SubscriptionService{
 		repo: repo,
 		log:  log,

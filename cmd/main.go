@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/artnikel/subservice/internal/config"
+	"github.com/artnikel/subservice/internal/handlers"
 	"github.com/artnikel/subservice/internal/logger"
-	// "github.com/artnikel/subservice/internal/repository"
-	// "github.com/artnikel/subservice/internal/service"
+	"github.com/artnikel/subservice/internal/repository"
+	"github.com/artnikel/subservice/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
 )
@@ -29,8 +32,46 @@ func main() {
 
 	log.Info("Connected to database successfully")
 
-	// repo := repository.NewSubscriptionRepository(db)
-	// srv := service.NewSubscriptionService(repo, log)
+	repo := repository.NewSubscriptionRepository(db)
+	svc := service.NewSubscriptionService(repo, log)
+	handler := handlers.NewSubscriptionHandler(svc, log)
+
+	if cfg.Logging.Level == "debug" {
+		gin.SetMode(gin.DebugMode)
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(logger.GinLogger(log))
+
+	api := router.Group("/api/v1")
+	{
+		subscriptions := api.Group("/subscriptions")
+		{
+			subscriptions.POST("", handler.CreateSubscription)
+			subscriptions.GET("", handler.ListSubscriptions)
+			subscriptions.GET("/:id", handler.GetSubscription)
+			subscriptions.PUT("/:id", handler.UpdateSubscription)
+			subscriptions.DELETE("/:id", handler.DeleteSubscription)
+		}
+		api.GET("/cost-summary", handler.GetCostSummary)
+	}
+
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler:      router,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+	}
+
+	go func() {
+		log.Infof("Starting server on port %d", cfg.Server.Port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
 
 }
 
@@ -43,9 +84,7 @@ func connectPGX(cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	config.MaxConns = int32(cfg.MaxOpenConns)
-	config.MinConns = int32(cfg.MaxIdleConns)
-	config.MaxConnLifetime = cfg.ConnMaxLifetime
+	config.MaxConns = cfg.MaxConns
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
