@@ -1,3 +1,4 @@
+// Package models provides the data models used in the application
 package models
 
 import (
@@ -48,7 +49,7 @@ type CostSummaryResponse struct {
 	TotalCost int `json:"total_cost" example:"4800"`
 }
 
-// ErrorRequestResponse represents an requset error response 
+// ErrorRequestResponse represents an requset error response
 type ErrorRequestResponse struct {
 	Error string `json:"error" example:"Invalid request"`
 }
@@ -62,6 +63,9 @@ type ErrorNotFoundResponse struct {
 type ErrorServerResponse struct {
 	Error string `json:"error" example:"Internal server error"`
 }
+
+// ErrSubscriptionNotFound represents an not found subscription error
+const ErrSubscriptionNotFound = "subscription not found"
 
 // ListResponse presents a response with a list of subscriptions
 type ListResponse struct {

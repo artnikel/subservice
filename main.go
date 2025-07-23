@@ -1,3 +1,4 @@
+// Package main is an entry point to application
 package main
 
 import (
@@ -9,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/artnikel/subservice/docs"
 	"github.com/artnikel/subservice/internal/config"
 	"github.com/artnikel/subservice/internal/handlers"
 	"github.com/artnikel/subservice/internal/logger"
@@ -17,10 +19,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sirupsen/logrus"
-	_ "github.com/artnikel/subservice/docs"
 
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+)
+
+const (
+	dbConnectTimeout      = 5 * time.Second
+	serverShutdownTimeout = 30 * time.Second
 )
 
 // @title Subscriptions API
@@ -34,14 +40,14 @@ func main() {
 		logrus.Fatalf("Failed to load config: %v", err)
 	}
 
-	log := logger.New(cfg.Logging.Level, cfg.Logging.File)
+	log := logger.NewLogger(cfg.Logging.Level, cfg.Logging.File)
 
-	db, err := connectPGX(cfg.Database)
+	db, err := connectPGX(&cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
-	
+
 	log.Info("Connected to database successfully")
 
 	repo := repository.NewSubscriptionRepository(db)
@@ -63,13 +69,12 @@ func main() {
 	api := router.Group("/api/v1")
 	{
 		subscriptions := api.Group("/subscriptions")
-		{
-			subscriptions.POST("", handler.CreateSubscription)
-			subscriptions.GET("", handler.ListSubscriptions)
-			subscriptions.GET("/:id", handler.GetSubscription)
-			subscriptions.PUT("/:id", handler.UpdateSubscription)
-			subscriptions.DELETE("/:id", handler.DeleteSubscription)
-		}
+		subscriptions.POST("", handler.CreateSubscription)
+		subscriptions.GET("", handler.ListSubscriptions)
+		subscriptions.GET("/:id", handler.GetSubscription)
+		subscriptions.PUT("/:id", handler.UpdateSubscription)
+		subscriptions.DELETE("/:id", handler.DeleteSubscription)
+
 		api.GET("/cost/summary", handler.GetCostSummary)
 	}
 
@@ -93,17 +98,18 @@ func main() {
 
 	log.Info("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
+		//nolint:gocritic
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
 	log.Info("Server exited")
 }
 
-func connectPGX(cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
+func connectPGX(cfg *config.DatabaseConfig) (*pgxpool.Pool, error) {
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
 		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, cfg.SSLMode)
 
@@ -114,7 +120,7 @@ func connectPGX(cfg config.DatabaseConfig) (*pgxpool.Pool, error) {
 
 	config.MaxConns = cfg.MaxConns
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), dbConnectTimeout)
 	defer cancel()
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)

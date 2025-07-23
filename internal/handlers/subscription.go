@@ -1,3 +1,4 @@
+// Package handlers provides HTTP handlers for managing subscriptions with validation and logging
 package handlers
 
 import (
@@ -11,20 +12,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// SubscriptionService defines business logic methods used by the HTTP handlers
 type SubscriptionService interface {
 	CreateSubscription(ctx context.Context, req *models.CreateSubscriptionRequest) (*models.Subscription, error)
 	GetSubscription(ctx context.Context, id uuid.UUID) (*models.Subscription, error)
 	UpdateSubscription(ctx context.Context, id uuid.UUID, req *models.UpdateSubscriptionRequest) (*models.Subscription, error)
-	DeleteSubscription(ctx context.Context, id uuid.UUID) error  
+	DeleteSubscription(ctx context.Context, id uuid.UUID) error
 	ListSubscriptions(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) (*models.ListResponse, error)
-	GetCostSummary(ctx context.Context, req *models.CostSummaryRequest) (*models.CostSummaryResponse, error) 
+	GetCostSummary(ctx context.Context, req *models.CostSummaryRequest) (*models.CostSummaryResponse, error)
 }
 
+// SubscriptionHandler handles HTTP requests related to subscriptions
 type SubscriptionHandler struct {
 	service SubscriptionService
 	log     *logrus.Logger
 }
 
+// NewSubscriptionHandler creates a new SubscriptionHandler with service and logger dependencies
 func NewSubscriptionHandler(service SubscriptionService, log *logrus.Logger) *SubscriptionHandler {
 	return &SubscriptionHandler{
 		service: service,
@@ -32,6 +36,7 @@ func NewSubscriptionHandler(service SubscriptionService, log *logrus.Logger) *Su
 	}
 }
 
+// CreateSubscription handles POST requests to create a new subscription
 // @Summary Create a subscription
 // @Description Creates a new user subscription
 // @Tags subscriptions
@@ -61,6 +66,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	c.JSON(http.StatusCreated, subscription)
 }
 
+// GetSubscription handles GET requests to fetch a subscription by ID
 // @Summary Get Subscription
 // @Description Gets subscriptions by ID
 // @Tags subscriptions
@@ -82,7 +88,7 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 
 	subscription, err := h.service.GetSubscription(c, id)
 	if err != nil {
-		if err.Error() == "subscription not found" {
+		if err.Error() == models.ErrSubscriptionNotFound {
 			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
@@ -94,6 +100,7 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, subscription)
 }
 
+// UpdateSubscription handles PUT requests to update an existing subscription
 // @Summary Update Subscription
 // @Description Updates an existing subscription
 // @Tags subscriptions
@@ -124,7 +131,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 
 	subscription, err := h.service.UpdateSubscription(c, id, &req)
 	if err != nil {
-		if err.Error() == "subscription not found" {
+		if err.Error() == models.ErrSubscriptionNotFound {
 			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
@@ -136,6 +143,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, subscription)
 }
 
+// DeleteSubscription handles DELETE requests to remove a subscription by ID
 // @Summary Delete Subscription
 // @Description Deletes subscription by ID
 // @Tags subscriptions
@@ -156,7 +164,7 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 
 	err = h.service.DeleteSubscription(c, id)
 	if err != nil {
-		if err.Error() == "subscription not found" {
+		if err.Error() == models.ErrSubscriptionNotFound {
 			c.JSON(http.StatusNotFound, models.ErrorNotFoundResponse{Error: err.Error()})
 			return
 		}
@@ -168,6 +176,7 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// ListSubscriptions handles GET requests to list subscriptions with optional filters and pagination
 // @Summary Get a list of subscriptions
 // @Description Gets a list of subscriptions with pagination and filtering
 // @Tags subscriptions
@@ -221,6 +230,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// GetCostSummary handles GET requests to calculate total subscription cost for a period with filters
 // @Summary Calculate total cost
 // @Description Calculates the total cost of subscriptions per period with filtering
 // @Tags subscriptions

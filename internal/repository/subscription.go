@@ -1,3 +1,4 @@
+// Package repository provides data access layer for subscriptions in PostgreSQL using pgxpool
 package repository
 
 import (
@@ -11,14 +12,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// SubscriptionRepository manages subscription persistence in the database
 type SubscriptionRepository struct {
 	pool *pgxpool.Pool
 }
 
+// NewSubscriptionRepository creates a new repository with the given pgx connection pool
 func NewSubscriptionRepository(pool *pgxpool.Pool) *SubscriptionRepository {
 	return &SubscriptionRepository{pool: pool}
 }
 
+// Create inserts a new subscription into the database and updates the model with generated fields
 func (r *SubscriptionRepository) Create(ctx context.Context, subscription *models.Subscription) error {
 	query := `
 		INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date)
@@ -35,6 +39,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, subscription *model
 	).Scan(&subscription.ID, &subscription.CreatedAt, &subscription.UpdatedAt)
 }
 
+// GetByID fetches a subscription by its ID or returns nil if not found
 func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Subscription, error) {
 	subscription := &models.Subscription{}
 	query := `
@@ -60,6 +65,7 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 	return subscription, err
 }
 
+// Update modifies fields of a subscription specified in updates map and returns the updated subscription
 func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, updates map[string]interface{}) (*models.Subscription, error) {
 	if len(updates) == 0 {
 		return r.GetByID(ctx, id)
@@ -103,6 +109,7 @@ func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, updat
 	return subscription, err
 }
 
+// Delete removes a subscription by ID, returning sql.ErrNoRows if none deleted
 func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM subscriptions WHERE id = $1`
 	result, err := r.pool.Exec(ctx, query, id)
@@ -119,7 +126,9 @@ func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error
 	return nil
 }
 
-func (r *SubscriptionRepository) List(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) ([]models.Subscription, int, error) {
+// List retrieves subscriptions filtered by optional userID and serviceName with pagination, returning total count
+func (r *SubscriptionRepository) List(
+	ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) ([]models.Subscription, int, error) {
 	conditions := []string{}
 	args := []interface{}{}
 	argIndex := 1
@@ -190,7 +199,9 @@ func (r *SubscriptionRepository) List(ctx context.Context, userID *uuid.UUID, se
 	return subscriptions, total, nil
 }
 
-func (r *SubscriptionRepository) GetCostSummary(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth, endMonth string) (int, error) {
+// GetCostSummary calculates total subscription cost filtered by optional userID, serviceName and date range
+func (r *SubscriptionRepository) GetCostSummary(
+	ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth, endMonth string) (int, error) {
 	conditions := []string{}
 	args := []interface{}{}
 	argIndex := 1

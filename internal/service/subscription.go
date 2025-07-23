@@ -1,3 +1,4 @@
+// Package service implements business logic for subscriptions using a repository and logging
 package service
 
 import (
@@ -5,13 +6,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"regexp"
 
 	"github.com/artnikel/subservice/internal/models"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
+// SubscriptionRepository defines database operations required by the subscription service
 type SubscriptionRepository interface {
 	Create(ctx context.Context, subscription *models.Subscription) error
 	GetByID(ctx context.Context, id uuid.UUID) (*models.Subscription, error)
@@ -21,11 +22,13 @@ type SubscriptionRepository interface {
 	GetCostSummary(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth, endMonth string) (int, error)
 }
 
+// SubscriptionService provides subscription business operations with logging and validation
 type SubscriptionService struct {
 	repo SubscriptionRepository
 	log  *logrus.Logger
 }
 
+// NewSubscriptionService creates a new service instance with given repository and logger
 func NewSubscriptionService(repo SubscriptionRepository, log *logrus.Logger) *SubscriptionService {
 	return &SubscriptionService{
 		repo: repo,
@@ -33,6 +36,7 @@ func NewSubscriptionService(repo SubscriptionRepository, log *logrus.Logger) *Su
 	}
 }
 
+// CreateSubscription validates and creates a new subscription record
 func (s *SubscriptionService) CreateSubscription(ctx context.Context, req *models.CreateSubscriptionRequest) (*models.Subscription, error) {
 	s.log.WithFields(logrus.Fields{
 		"service_name": req.ServiceName,
@@ -69,6 +73,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, req *model
 	return subscription, nil
 }
 
+// GetSubscription retrieves a subscription by its ID with logging and error handling
 func (s *SubscriptionService) GetSubscription(ctx context.Context, id uuid.UUID) (*models.Subscription, error) {
 	s.log.WithField("subscription_id", id).Info("Getting subscription")
 
@@ -86,6 +91,7 @@ func (s *SubscriptionService) GetSubscription(ctx context.Context, id uuid.UUID)
 	return subscription, nil
 }
 
+// UpdateSubscription validates and applies updates to a subscription by ID
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, id uuid.UUID, req *models.UpdateSubscriptionRequest) (*models.Subscription, error) {
 	s.log.WithField("subscription_id", id).Info("Updating subscription")
 
@@ -143,6 +149,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, id uuid.UU
 	return subscription, nil
 }
 
+// DeleteSubscription removes a subscription by ID with proper error handling and logging
 func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id uuid.UUID) error {
 	s.log.WithField("subscription_id", id).Info("Deleting subscription")
 
@@ -161,6 +168,7 @@ func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id uuid.UU
 	return nil
 }
 
+// ListSubscriptions retrieves subscriptions filtered by optional criteria with pagination and logging
 func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) (*models.ListResponse, error) {
 	s.log.WithFields(logrus.Fields{
 		"user_id":      userID,
@@ -201,6 +209,7 @@ func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID *uui
 	return response, nil
 }
 
+// GetCostSummary validates input and calculates total subscription cost for given criteria
 func (s *SubscriptionService) GetCostSummary(ctx context.Context, req *models.CostSummaryRequest) (*models.CostSummaryResponse, error) {
 	s.log.WithFields(logrus.Fields{
 		"user_id":      req.UserID,
@@ -233,14 +242,4 @@ func (s *SubscriptionService) GetCostSummary(ctx context.Context, req *models.Co
 
 	s.log.WithField("total_cost", totalCost).Info("Cost summary calculated successfully")
 	return response, nil
-}
-
-func (s *SubscriptionService) isValidDateFormat(date string) bool {
-	pattern := `^\d{2}-\d{4}$`
-	matched, _ := regexp.MatchString(pattern, date)
-	return matched
-}
-
-func (s *SubscriptionService) isEndDateAfterStartDate(startDate, endDate string) bool {
-	return endDate >= startDate
 }

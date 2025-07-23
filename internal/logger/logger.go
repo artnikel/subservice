@@ -1,7 +1,9 @@
+// Package logger provides utilities for creating and using structured loggers with logrus and Gin middleware
 package logger
 
 import (
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,7 +12,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func New(level, logFile string) *logrus.Logger {
+const (
+	mkdirPerm    = 0o700
+	openFilePerm = 0o600
+)
+
+// NewLogger creates and configures a new logrus logger with specified level and optional file output
+func NewLogger(level, logFile string) *logrus.Logger {
 	log := logrus.New()
 
 	lvl, err := logrus.ParseLevel(level)
@@ -25,10 +33,11 @@ func New(level, logFile string) *logrus.Logger {
 
 	if logFile != "" {
 		dir := filepath.Dir(logFile)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, mkdirPerm); err != nil {
 			log.Warnf("Failed to create log directory: %v", err)
 		} else {
-			file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			// #nosec G304 -- log path is trusted and not user-controlled
+			file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, openFilePerm)
 			if err != nil {
 				log.Warnf("Failed to open log file: %v", err)
 			} else {
@@ -40,6 +49,7 @@ func New(level, logFile string) *logrus.Logger {
 	return log
 }
 
+// GinLogger returns a Gin middleware handler that logs HTTP requests using the provided logger
 func GinLogger(log *logrus.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -74,11 +84,12 @@ func GinLogger(log *logrus.Logger) gin.HandlerFunc {
 			entry.Error(c.Errors.String())
 		} else {
 			msg := "Request completed"
-			if statusCode >= 500 {
+			switch {
+			case statusCode >= http.StatusInternalServerError:
 				entry.Error(msg)
-			} else if statusCode >= 400 {
+			case statusCode >= http.StatusBadRequest:
 				entry.Warn(msg)
-			} else {
+			default:
 				entry.Info(msg)
 			}
 		}
