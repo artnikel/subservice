@@ -1,0 +1,245 @@
+// Package service implements business logic for subscriptions using a repository and logging
+package service
+
+import (
+	"context"
+	"fmt"
+
+	cerrors "github.com/artnikel/subservice/internal/errors"
+	"github.com/artnikel/subservice/internal/models"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/sirupsen/logrus"
+)
+
+// SubscriptionRepository defines database operations required by the subscription service
+type SubscriptionRepository interface {
+	Create(ctx context.Context, subscription *models.Subscription) error
+	GetByID(ctx context.Context, id uuid.UUID) (*models.Subscription, error)
+	Update(ctx context.Context, id uuid.UUID, updates *models.SubscriptionUpdates) (*models.Subscription, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	List(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) ([]models.Subscription, int, error)
+	GetCostSummary(ctx context.Context, userID *string, serviceName *string, startMonth, endMonth string) (int, error)
+}
+
+// SubscriptionService provides subscription business operations with logging and validation
+type SubscriptionService struct {
+	repo SubscriptionRepository
+	log  *logrus.Logger
+}
+
+// NewSubscriptionService creates a new service instance with given repository and logger
+func NewSubscriptionService(repo SubscriptionRepository, log *logrus.Logger) *SubscriptionService {
+	return &SubscriptionService{
+		repo: repo,
+		log:  log,
+	}
+}
+
+// CreateSubscription validates and creates a new subscription record
+func (s *SubscriptionService) CreateSubscription(ctx context.Context, req *models.CreateSubscriptionRequest) (*models.Subscription, error) {
+	s.log.WithFields(logrus.Fields{
+		"service_name": req.ServiceName,
+		"user_id":      req.UserID,
+		"price":        req.Price,
+	}).Info("Creating new subscription")
+
+	if !s.isValidDateFormat(req.StartDate) {
+		return nil, cerrors.ErrInvalidStartDateFormat
+	}
+
+	if req.EndDate != nil && !s.isValidDateFormat(*req.EndDate) {
+		return nil, cerrors.ErrEndDateBeforeStart
+	}
+
+	if req.EndDate != nil && !s.isEndDateAfterStartDate(req.StartDate, *req.EndDate) {
+		return nil, cerrors.ErrEndDateBeforeStart
+	}
+
+	subscription := &models.Subscription{
+		ServiceName: req.ServiceName,
+		Price:       req.Price,
+		UserID:      req.UserID,
+		StartDate:   req.StartDate,
+		EndDate:     req.EndDate,
+	}
+
+	if err := s.repo.Create(ctx, subscription); err != nil {
+		s.log.WithError(err).Error("Failed to create subscription")
+		return nil, fmt.Errorf("failed to create subscription: %w", err)
+	}
+
+	s.log.WithField("subscription_id", subscription.ID).Info("Subscription created successfully")
+	return subscription, nil
+}
+
+// GetSubscription retrieves a subscription by its ID with logging and error handling
+func (s *SubscriptionService) GetSubscription(ctx context.Context, id uuid.UUID) (*models.Subscription, error) {
+	s.log.WithField("subscription_id", id).Info("Getting subscription")
+
+	subscription, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		s.log.WithError(err).Error("Failed to get subscription")
+		return nil, fmt.Errorf("failed to get subscription: %w", err)
+	}
+
+	if subscription == nil {
+		s.log.WithField("subscription_id", id).Warn("Subscription not found")
+		return nil, cerrors.ErrSubscriptionNotFound
+	}
+
+	return subscription, nil
+}
+
+// UpdateSubscription validates and applies updates to a subscription by ID
+func (s *SubscriptionService) UpdateSubscription(ctx context.Context, id uuid.UUID, req *models.UpdateSubscriptionRequest) (*models.Subscription, error) {
+	s.log.WithField("subscription_id", id).Info("Updating subscription")
+
+	existing, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		s.log.WithError(err).Error("Failed to get subscription for update")
+		return nil, fmt.Errorf("failed to get subscription: %w", err)
+	}
+
+	if existing == nil {
+		s.log.WithField("subscription_id", id).Warn("Subscription not found for update")
+		return nil, cerrors.ErrSubscriptionNotFound
+	}
+
+	var updates models.SubscriptionUpdates
+
+	if req.ServiceName != nil {
+		updates.ServiceName = req.ServiceName
+	}
+
+	if req.Price != nil {
+		updates.Price = req.Price
+	}
+
+	if req.StartDate != nil {
+		if !s.isValidDateFormat(*req.StartDate) {
+			return nil, cerrors.ErrInvalidStartDateFormat
+		}
+		updates.StartDate = req.StartDate
+	}
+
+	if req.EndDate != nil {
+		if !s.isValidDateFormat(*req.EndDate) {
+			return nil, cerrors.ErrInvalidEndDateFormat
+		}
+		updates.EndDate = req.EndDate
+	}
+
+	startDate := existing.StartDate
+	if req.StartDate != nil {
+		startDate = *req.StartDate
+	}
+
+	if req.EndDate != nil && !s.isEndDateAfterStartDate(startDate, *req.EndDate) {
+		return nil, cerrors.ErrEndDateBeforeStart
+	}
+
+	subscription, err := s.repo.Update(ctx, id, &updates)
+	if err != nil {
+		s.log.WithError(err).Error("Failed to update subscription")
+		return nil, fmt.Errorf("failed to update subscription: %w", err)
+	}
+
+	s.log.WithField("subscription_id", id).Info("Subscription updated successfully")
+	return subscription, nil
+}
+
+// DeleteSubscription removes a subscription by ID with proper error handling and logging
+func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id uuid.UUID) error {
+	s.log.WithField("subscription_id", id).Info("Deleting subscription")
+
+	err := s.repo.Delete(ctx, id)
+	if err == pgx.ErrNoRows {
+		s.log.WithField("subscription_id", id).Warn("Subscription not found for deletion")
+		return cerrors.ErrSubscriptionNotFound
+	}
+
+	if err != nil {
+		s.log.WithError(err).Error("Failed to delete subscription")
+		return fmt.Errorf("failed to delete subscription: %w", err)
+	}
+
+	s.log.WithField("subscription_id", id).Info("Subscription deleted successfully")
+	return nil
+}
+
+// ListSubscriptions retrieves subscriptions filtered by optional criteria with pagination and logging
+func (s *SubscriptionService) ListSubscriptions(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) (*models.ListResponse, error) {
+	s.log.WithFields(logrus.Fields{
+		"user_id":      userID,
+		"service_name": serviceName,
+		"page":         page,
+		"page_size":    pageSize,
+	}).Info("Listing subscriptions")
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	subscriptions, total, err := s.repo.List(ctx, userID, serviceName, page, pageSize)
+	if err != nil {
+		s.log.WithError(err).Error("Failed to list subscriptions")
+		return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+	}
+
+	totalPages := (total + pageSize - 1) / pageSize
+
+	response := &models.ListResponse{
+		Data:       subscriptions,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: totalPages,
+	}
+
+	s.log.WithFields(logrus.Fields{
+		"total":       total,
+		"page":        page,
+		"total_pages": totalPages,
+	}).Info("Subscriptions listed successfully")
+
+	return response, nil
+}
+
+// GetCostSummary validates input and calculates total subscription cost for given criteria
+func (s *SubscriptionService) GetCostSummary(ctx context.Context, req *models.CostSummaryRequest) (*models.CostSummaryResponse, error) {
+	s.log.WithFields(logrus.Fields{
+		"user_id":      req.UserID,
+		"service_name": req.ServiceName,
+		"start_month":  req.StartMonth,
+		"end_month":    req.EndMonth,
+	}).Info("Calculating cost summary")
+
+	if !s.isValidDateFormat(req.StartMonth) {
+		return nil, cerrors.ErrInvalidStartMonthFormat
+	}
+
+	if !s.isValidDateFormat(req.EndMonth) {
+		return nil, cerrors.ErrInvalidEndMonthFormat
+	}
+
+	if !s.isEndDateAfterStartDate(req.StartMonth, req.EndMonth) {
+		return nil, cerrors.ErrEndMonthBeforeStart
+	}
+
+	totalCost, err := s.repo.GetCostSummary(ctx, &req.UserID, req.ServiceName, req.StartMonth, req.EndMonth)
+	if err != nil {
+		s.log.WithError(err).Error("Failed to calculate cost summary")
+		return nil, fmt.Errorf("failed to calculate cost summary: %w", err)
+	}
+
+	response := &models.CostSummaryResponse{
+		TotalCost: totalCost,
+	}
+
+	s.log.WithField("total_cost", totalCost).Info("Cost summary calculated successfully")
+	return response, nil
+}

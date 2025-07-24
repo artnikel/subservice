@@ -1,3 +1,4 @@
+// Package models provides the data models used in the application
 package models
 
 import (
@@ -37,10 +38,10 @@ type UpdateSubscriptionRequest struct {
 
 // CostSummaryRequest represents a request to calculate a cost
 type CostSummaryRequest struct {
-	UserID      *uuid.UUID `form:"user_id" example:"60601fee-2bf1-4721-ae6f-7636e79a0cba"`
-	ServiceName *string    `form:"service_name" example:"Yandex Plus"`
-	StartMonth  string     `form:"start_month" binding:"required" example:"01-2025"`
-	EndMonth    string     `form:"end_month" binding:"required" example:"12-2025"`
+	UserID      string  `form:"user_id" example:"60601fee-2bf1-4721-ae6f-7636e79a0cba"`
+	ServiceName *string `form:"service_name" example:"Yandex Plus"`
+	StartMonth  string  `form:"start_month" binding:"required" example:"01-2025"`
+	EndMonth    string  `form:"end_month" binding:"required" example:"12-2025"`
 }
 
 // CostSummaryResponse represents a response with a summarized cost
@@ -48,9 +49,19 @@ type CostSummaryResponse struct {
 	TotalCost int `json:"total_cost" example:"4800"`
 }
 
-// ErrorResponse represents an error response
-type ErrorResponse struct {
+// ErrorRequestResponse represents an requset error response
+type ErrorRequestResponse struct {
 	Error string `json:"error" example:"Invalid request"`
+}
+
+// ErrorNotFoundResponse represents an not found error response
+type ErrorNotFoundResponse struct {
+	Error string `json:"error" example:"Not found"`
+}
+
+// ErrorServerResponse represents an server error response
+type ErrorServerResponse struct {
+	Error string `json:"error" example:"Internal server error"`
 }
 
 // ListResponse presents a response with a list of subscriptions
@@ -60,4 +71,12 @@ type ListResponse struct {
 	Page       int            `json:"page"`
 	PageSize   int            `json:"page_size"`
 	TotalPages int            `json:"total_pages"`
+}
+
+// SubscriptionUpdates introduces the updates model
+type SubscriptionUpdates struct {
+	ServiceName *string
+	Price       *int
+	StartDate   *string
+	EndDate     *string
 }

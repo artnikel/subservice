@@ -1,24 +1,28 @@
+// Package repository provides data access layer for subscriptions in PostgreSQL using pgxpool
 package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
 	"github.com/artnikel/subservice/internal/models"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// SubscriptionRepository manages subscription persistence in the database
 type SubscriptionRepository struct {
 	pool *pgxpool.Pool
 }
 
+// NewSubscriptionRepository creates a new repository with the given pgx connection pool
 func NewSubscriptionRepository(pool *pgxpool.Pool) *SubscriptionRepository {
 	return &SubscriptionRepository{pool: pool}
 }
 
+// Create inserts a new subscription into the database and updates the model with generated fields
 func (r *SubscriptionRepository) Create(ctx context.Context, subscription *models.Subscription) error {
 	query := `
 		INSERT INTO subscriptions (service_name, price, user_id, start_date, end_date)
@@ -35,6 +39,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, subscription *model
 	).Scan(&subscription.ID, &subscription.CreatedAt, &subscription.UpdatedAt)
 }
 
+// GetByID fetches a subscription by its ID or returns nil if not found
 func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Subscription, error) {
 	subscription := &models.Subscription{}
 	query := `
@@ -53,26 +58,45 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 		&subscription.UpdatedAt,
 	)
 
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 
 	return subscription, err
 }
 
-func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, updates map[string]interface{}) (*models.Subscription, error) {
-	if len(updates) == 0 {
-		return r.GetByID(ctx, id)
-	}
-
-	setParts := make([]string, 0, len(updates))
-	args := make([]interface{}, 0, len(updates)+1)
+// Update modifies fields of a subscription specified in updates map and returns the updated subscription
+func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, updates *models.SubscriptionUpdates) (*models.Subscription, error) {
+	setParts := []string{}
+	args := []interface{}{}
 	argIndex := 1
 
-	for field, value := range updates {
-		setParts = append(setParts, fmt.Sprintf("%s = $%d", field, argIndex))
-		args = append(args, value)
+	if updates.ServiceName != nil {
+		setParts = append(setParts, fmt.Sprintf("service_name = $%d", argIndex))
+		args = append(args, *updates.ServiceName)
 		argIndex++
+	}
+
+	if updates.Price != nil {
+		setParts = append(setParts, fmt.Sprintf("price = $%d", argIndex))
+		args = append(args, *updates.Price)
+		argIndex++
+	}
+
+	if updates.StartDate != nil {
+		setParts = append(setParts, fmt.Sprintf("start_date = $%d", argIndex))
+		args = append(args, *updates.StartDate)
+		argIndex++
+	}
+
+	if updates.EndDate != nil {
+		setParts = append(setParts, fmt.Sprintf("end_date = $%d", argIndex))
+		args = append(args, *updates.EndDate)
+		argIndex++
+	}
+
+	if len(setParts) == 0 {
+		return r.GetByID(ctx, id)
 	}
 
 	args = append(args, id)
@@ -96,13 +120,14 @@ func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, updat
 		&subscription.UpdatedAt,
 	)
 
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 
 	return subscription, err
 }
 
+// Delete removes a subscription by ID, returning ErrNoRows if none deleted
 func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM subscriptions WHERE id = $1`
 	result, err := r.pool.Exec(ctx, query, id)
@@ -113,13 +138,15 @@ func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error
 	rowsAffected := result.RowsAffected()
 
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return pgx.ErrNoRows
 	}
 
 	return nil
 }
 
-func (r *SubscriptionRepository) List(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) ([]models.Subscription, int, error) {
+// List retrieves subscriptions filtered by optional userID and serviceName with pagination, returning total count
+func (r *SubscriptionRepository) List(
+	ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) ([]models.Subscription, int, error) {
 	conditions := []string{}
 	args := []interface{}{}
 	argIndex := 1
@@ -190,14 +217,25 @@ func (r *SubscriptionRepository) List(ctx context.Context, userID *uuid.UUID, se
 	return subscriptions, total, nil
 }
 
-func (r *SubscriptionRepository) GetCostSummary(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth, endMonth string) (int, error) {
+// GetCostSummary calculates total subscription cost filtered by optional userID, serviceName and date range
+func (r *SubscriptionRepository) GetCostSummary(
+	ctx context.Context, userID *string, serviceName *string, startMonth, endMonth string) (int, error) {
+	var userUUID *uuid.UUID
+	if userID != nil && *userID != "" {
+		parsedUUID, err := uuid.Parse(*userID)
+		if err != nil {
+			return 0, fmt.Errorf("invalid user_id UUID format: %w", err)
+		}
+		userUUID = &parsedUUID
+	}
+
 	conditions := []string{}
 	args := []interface{}{}
 	argIndex := 1
 
-	if userID != nil {
+	if userUUID != nil {
 		conditions = append(conditions, fmt.Sprintf("user_id = $%d", argIndex))
-		args = append(args, *userID)
+		args = append(args, *userUUID)
 		argIndex++
 	}
 
