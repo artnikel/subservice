@@ -3,12 +3,15 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
-	"github.com/artnikel/subservice/internal/errors"
+	cerrors "github.com/artnikel/subservice/internal/errors"
 	"github.com/artnikel/subservice/internal/handlers/mocks"
 	"github.com/artnikel/subservice/internal/models"
 	"github.com/gin-gonic/gin"
@@ -66,7 +69,7 @@ func TestSubscriptionHandler_CreateSubscription(t *testing.T) {
 				StartDate:   "invalid-date",
 			},
 			mockSetup: func() {
-				mockService.On("CreateSubscription", mock.Anything, mock.AnythingOfType("*models.CreateSubscriptionRequest")).Return(nil, errors.ErrInvalidStartDateFormat).Once()
+				mockService.On("CreateSubscription", mock.Anything, mock.AnythingOfType("*models.CreateSubscriptionRequest")).Return(nil, cerrors.ErrInvalidStartDateFormat).Once()
 			},
 			expectedStatus: http.StatusBadRequest,
 		},
@@ -130,7 +133,7 @@ func TestSubscriptionHandler_GetSubscription(t *testing.T) {
 			name: "subscription not found",
 			id:   validID.String(),
 			mockSetup: func() {
-				mockService.On("GetSubscription", mock.Anything, validID).Return(nil, errors.ErrSubscriptionNotFound).Once()
+				mockService.On("GetSubscription", mock.Anything, validID).Return(nil, cerrors.ErrSubscriptionNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 		},
@@ -147,6 +150,112 @@ func TestSubscriptionHandler_GetSubscription(t *testing.T) {
 			c.Params = gin.Params{{Key: "id", Value: tt.id}}
 
 			handler.GetSubscription(c)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestSubscriptionHandler_UpdateSubscription(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	mockService := new(mocks.MockSubscriptionService)
+	logger := logrus.New()
+	handler := NewSubscriptionHandler(mockService, logger)
+
+	validID := uuid.New()
+
+	serviceName := "Yandex Plus"
+	price := 400
+	startDate := "07-2025"
+	endDate := "07-2026"
+
+	updateReq := models.UpdateSubscriptionRequest{
+		ServiceName: &serviceName,
+		Price:       &price,
+		StartDate:   &startDate,
+		EndDate:     &endDate,
+	}
+
+	updatedSubscription := &models.Subscription{
+		ID:          validID,
+		ServiceName: serviceName,
+		Price:       price,
+		UserID:      uuid.New(),
+		StartDate:   startDate,
+		EndDate:     &endDate,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	tests := []struct {
+		name           string
+		id             string
+		requestBody    interface{}
+		mockSetup      func()
+		expectedStatus int
+	}{
+		{
+			name:        "successful update",
+			id:          validID.String(),
+			requestBody: updateReq,
+			mockSetup: func() {
+				mockService.On("UpdateSubscription", mock.Anything, validID, mock.AnythingOfType("*models.UpdateSubscriptionRequest")).
+					Return(updatedSubscription, nil).Once()
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "invalid id format",
+			id:             "invalid-uuid",
+			requestBody:    updateReq,
+			mockSetup:      func() {},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "invalid request body",
+			id:             validID.String(),
+			requestBody:    "not json",
+			mockSetup:      func() {},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:        "subscription not found",
+			id:          validID.String(),
+			requestBody: updateReq,
+			mockSetup: func() {
+				mockService.On("UpdateSubscription", mock.Anything, validID, mock.AnythingOfType("*models.UpdateSubscriptionRequest")).
+					Return(nil, cerrors.ErrSubscriptionNotFound).Once()
+			},
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name:        "service error",
+			id:          validID.String(),
+			requestBody: updateReq,
+			mockSetup: func() {
+				mockService.On("UpdateSubscription", mock.Anything, validID, mock.AnythingOfType("*models.UpdateSubscriptionRequest")).
+					Return(nil, errors.New("db error")).Once()
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService.ExpectedCalls = nil
+			tt.mockSetup()
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			body, _ := json.Marshal(tt.requestBody)
+			c.Request = httptest.NewRequest("PUT", "/subscriptions/"+tt.id, bytes.NewBuffer(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Params = gin.Params{{Key: "id", Value: tt.id}}
+
+			handler.UpdateSubscription(c)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			mockService.AssertExpectations(t)
@@ -183,7 +292,7 @@ func TestSubscriptionHandler_DeleteSubscription(t *testing.T) {
 		{
 			name: "subscription not found",
 			mockSetup: func(id uuid.UUID) {
-				mockService.On("DeleteSubscription", mock.Anything, id).Return(errors.ErrSubscriptionNotFound).Once()
+				mockService.On("DeleteSubscription", mock.Anything, id).Return(cerrors.ErrSubscriptionNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 		},
@@ -279,6 +388,92 @@ func TestSubscriptionHandler_ListSubscriptions(t *testing.T) {
 			c.Request = httptest.NewRequest("GET", "/subscriptions"+tt.queryParams, http.NoBody)
 
 			handler.ListSubscriptions(c)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestSubscriptionHandler_GetCostSummary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	mockService := new(mocks.MockSubscriptionService)
+	logger := logrus.New()
+	handler := NewSubscriptionHandler(mockService, logger)
+
+	userID := uuid.NewString()
+	serviceName := "Yandex Plus"
+
+	req := models.CostSummaryRequest{
+		UserID:      userID,
+		ServiceName: &serviceName,
+		StartMonth:  "01-2025",
+		EndMonth:    "12-2025",
+	}
+
+	resp := &models.CostSummaryResponse{
+		TotalCost: 12345,
+	}
+
+	params := url.Values{}
+	params.Set("user_id", userID)
+	params.Set("service_name", serviceName)
+	params.Set("start_month", req.StartMonth)
+	params.Set("end_month", req.EndMonth)
+
+	queryString := "?" + params.Encode()
+
+	tests := []struct {
+		name           string
+		queryString    string
+		mockSetup      func()
+		expectedStatus int
+	}{
+		{
+			name:        "successful get cost summary",
+			queryString: queryString,
+			mockSetup: func() {
+				mockService.On("GetCostSummary", mock.Anything, &req).Return(resp, nil).Once()
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:        "missing required params",
+			queryString: "?user_id=" + userID,
+			mockSetup: func() {
+				mockService.On("GetCostSummary", mock.Anything, mock.Anything).Return(nil, errors.New("should not be called")).Maybe()
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:        "invalid user_id format",
+			queryString: "?user_id=invalid-uuid&start_month=01-2025&end_month=12-2025",
+			mockSetup: func() {
+				mockService.On("GetCostSummary", mock.Anything, mock.Anything).Return(nil, errors.New("should not be called")).Maybe()
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:        "service error",
+			queryString: queryString,
+			mockSetup: func() {
+				mockService.On("GetCostSummary", mock.Anything, &req).Return(nil, errors.New("some error")).Once()
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService.ExpectedCalls = nil
+			tt.mockSetup()
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest("GET", "/subscriptions/cost_summary"+tt.queryString, http.NoBody)
+
+			handler.GetCostSummary(c)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 			mockService.AssertExpectations(t)

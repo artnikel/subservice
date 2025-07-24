@@ -189,7 +189,7 @@ func (_c *MockSubscriptionRepository_GetByID_Call) RunAndReturn(run func(ctx con
 }
 
 // GetCostSummary provides a mock function for the type MockSubscriptionRepository
-func (_mock *MockSubscriptionRepository) GetCostSummary(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth string, endMonth string) (int, error) {
+func (_mock *MockSubscriptionRepository) GetCostSummary(ctx context.Context, userID *string, serviceName *string, startMonth string, endMonth string) (int, error) {
 	ret := _mock.Called(ctx, userID, serviceName, startMonth, endMonth)
 
 	if len(ret) == 0 {
@@ -198,15 +198,15 @@ func (_mock *MockSubscriptionRepository) GetCostSummary(ctx context.Context, use
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *uuid.UUID, *string, string, string) (int, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *string, *string, string, string) (int, error)); ok {
 		return returnFunc(ctx, userID, serviceName, startMonth, endMonth)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, *uuid.UUID, *string, string, string) int); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *string, *string, string, string) int); ok {
 		r0 = returnFunc(ctx, userID, serviceName, startMonth, endMonth)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, *uuid.UUID, *string, string, string) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *string, *string, string, string) error); ok {
 		r1 = returnFunc(ctx, userID, serviceName, startMonth, endMonth)
 	} else {
 		r1 = ret.Error(1)
@@ -229,9 +229,9 @@ func (_e *MockSubscriptionRepository_Expecter) GetCostSummary(ctx interface{}, u
 	return &MockSubscriptionRepository_GetCostSummary_Call{Call: _e.mock.On("GetCostSummary", ctx, userID, serviceName, startMonth, endMonth)}
 }
 
-func (_c *MockSubscriptionRepository_GetCostSummary_Call) Run(run func(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth string, endMonth string)) *MockSubscriptionRepository_GetCostSummary_Call {
+func (_c *MockSubscriptionRepository_GetCostSummary_Call) Run(run func(ctx context.Context, userID *string, serviceName *string, startMonth string, endMonth string)) *MockSubscriptionRepository_GetCostSummary_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*uuid.UUID), args[2].(*string), args[3].(string), args[4].(string))
+		run(args[0].(context.Context), args[1].(*string), args[2].(*string), args[3].(string), args[4].(string))
 	})
 	return _c
 }
@@ -241,7 +241,7 @@ func (_c *MockSubscriptionRepository_GetCostSummary_Call) Return(n int, err erro
 	return _c
 }
 
-func (_c *MockSubscriptionRepository_GetCostSummary_Call) RunAndReturn(run func(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth string, endMonth string) (int, error)) *MockSubscriptionRepository_GetCostSummary_Call {
+func (_c *MockSubscriptionRepository_GetCostSummary_Call) RunAndReturn(run func(ctx context.Context, userID *string, serviceName *string, startMonth string, endMonth string) (int, error)) *MockSubscriptionRepository_GetCostSummary_Call {
 	_c.Call.Return(run)
 	return _c
 }

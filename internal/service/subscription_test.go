@@ -2,13 +2,13 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/artnikel/subservice/internal/errors"
 	"github.com/artnikel/subservice/internal/models"
 	"github.com/artnikel/subservice/internal/service/mocks"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -173,7 +173,7 @@ func TestSubscriptionService_DeleteSubscription(t *testing.T) {
 			name: "subscription not found",
 			id:   id,
 			mockSetup: func() {
-				mockRepo.On("Delete", mock.Anything, id).Return(sql.ErrNoRows).Once()
+				mockRepo.On("Delete", mock.Anything, id).Return(pgx.ErrNoRows).Once()
 			},
 			expectedError: errors.ErrSubscriptionNotFound,
 		},
@@ -203,7 +203,7 @@ func TestSubscriptionService_GetCostSummary(t *testing.T) {
 	logger := logrus.New()
 	service := NewSubscriptionService(mockRepo, logger)
 
-	userID := uuid.New()
+	userID := uuid.NewString()
 	serviceName := "Netflix"
 
 	tests := []struct {
@@ -216,7 +216,7 @@ func TestSubscriptionService_GetCostSummary(t *testing.T) {
 		{
 			name: "successful cost calculation",
 			request: &models.CostSummaryRequest{
-				UserID:      &userID,
+				UserID:      userID,
 				ServiceName: &serviceName,
 				StartMonth:  "01-2025",
 				EndMonth:    "12-2025",
@@ -262,6 +262,167 @@ func TestSubscriptionService_GetCostSummary(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, result)
 				assert.Equal(t, tt.expectedCost, result.TotalCost)
+			}
+
+			mockRepo.AssertExpectations(t)
+		})
+	}
+}
+
+func TestSubscriptionService_UpdateSubscription(t *testing.T) {
+	mockRepo := new(mocks.MockSubscriptionRepository)
+	logger := logrus.New()
+	service := NewSubscriptionService(mockRepo, logger)
+
+	id := uuid.New()
+	existing := &models.Subscription{
+		ID:        id,
+		UserID:    uuid.New(),
+		StartDate: "01-2025",
+	}
+	newName := "Spotify"
+	newPrice := 1999
+	newStart := "02-2025"
+	newEnd := "12-2025"
+
+	tests := []struct {
+		name          string
+		request       *models.UpdateSubscriptionRequest
+		mockSetup     func()
+		expectedError error
+	}{
+		{
+			name: "successful update",
+			request: &models.UpdateSubscriptionRequest{
+				ServiceName: &newName,
+				Price:       &newPrice,
+				StartDate:   &newStart,
+				EndDate:     &newEnd,
+			},
+			mockSetup: func() {
+				mockRepo.On("GetByID", mock.Anything, id).Return(existing, nil).Once()
+				mockRepo.On("Update", mock.Anything, id, mock.AnythingOfType("*models.SubscriptionUpdates")).
+					Return(&models.Subscription{ID: id, ServiceName: newName, Price: newPrice}, nil).Once()
+			},
+			expectedError: nil,
+		},
+		{
+			name: "invalid start date format",
+			request: &models.UpdateSubscriptionRequest{
+				StartDate: stringPtr("bad-format"),
+			},
+			mockSetup: func() {
+				mockRepo.On("GetByID", mock.Anything, id).Return(existing, nil).Once()
+			},
+			expectedError: errors.ErrInvalidStartDateFormat,
+		},
+		{
+			name: "end date before start date",
+			request: &models.UpdateSubscriptionRequest{
+				StartDate: stringPtr("02-2025"),
+				EndDate:   stringPtr("01-2025"),
+			},
+			mockSetup: func() {
+				mockRepo.On("GetByID", mock.Anything, id).Return(existing, nil).Once()
+			},
+			expectedError: errors.ErrEndDateBeforeStart,
+		},
+		{
+			name: "subscription not found",
+			request: &models.UpdateSubscriptionRequest{
+				ServiceName: &newName,
+			},
+			mockSetup: func() {
+				mockRepo.On("GetByID", mock.Anything, id).Return(nil, nil).Once()
+			},
+			expectedError: errors.ErrSubscriptionNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockRepo.ExpectedCalls = nil
+			tt.mockSetup()
+
+			result, err := service.UpdateSubscription(context.Background(), id, tt.request)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedError, err)
+				assert.Nil(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, result)
+			}
+
+			mockRepo.AssertExpectations(t)
+		})
+	}
+}
+
+func TestSubscriptionService_ListSubscriptions(t *testing.T) {
+	mockRepo := new(mocks.MockSubscriptionRepository)
+	logger := logrus.New()
+	service := NewSubscriptionService(mockRepo, logger)
+
+	userID := uuid.New()
+	serviceName := "Netflix"
+
+	tests := []struct {
+		name          string
+		page          int
+		pageSize      int
+		mockSetup     func()
+		expectedError error
+		expectedTotal int
+	}{
+		{
+			name:     "successful list",
+			page:     1,
+			pageSize: 10,
+			mockSetup: func() {
+				mockRepo.On("List", mock.Anything, &userID, &serviceName, 1, 10).
+					Return([]models.Subscription{{ServiceName: "Netflix"}}, 1, nil).Once()
+			},
+			expectedError: nil,
+			expectedTotal: 1,
+		},
+		{
+			name:     "repository error",
+			page:     1,
+			pageSize: 10,
+			mockSetup: func() {
+				mockRepo.On("List", mock.Anything, &userID, &serviceName, 1, 10).
+					Return(nil, 0, assert.AnError).Once()
+			},
+			expectedError: assert.AnError,
+		},
+		{
+			name:     "invalid pagination values",
+			page:     -5,
+			pageSize: 200,
+			mockSetup: func() {
+				mockRepo.On("List", mock.Anything, &userID, &serviceName, 1, 10).
+					Return([]models.Subscription{}, 0, nil).Once()
+			},
+			expectedError: nil,
+			expectedTotal: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockRepo.ExpectedCalls = nil
+			tt.mockSetup()
+
+			result, err := service.ListSubscriptions(context.Background(), &userID, &serviceName, tt.page, tt.pageSize)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedTotal, result.Total)
 			}
 
 			mockRepo.AssertExpectations(t)

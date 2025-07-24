@@ -38,10 +38,10 @@ type UpdateSubscriptionRequest struct {
 
 // CostSummaryRequest represents a request to calculate a cost
 type CostSummaryRequest struct {
-	UserID      *uuid.UUID `form:"user_id" example:"60601fee-2bf1-4721-ae6f-7636e79a0cba"`
-	ServiceName *string    `form:"service_name" example:"Yandex Plus"`
-	StartMonth  string     `form:"start_month" binding:"required" example:"01-2025"`
-	EndMonth    string     `form:"end_month" binding:"required" example:"12-2025"`
+	UserID      string  `form:"user_id" example:"60601fee-2bf1-4721-ae6f-7636e79a0cba"`
+	ServiceName *string `form:"service_name" example:"Yandex Plus"`
+	StartMonth  string  `form:"start_month" binding:"required" example:"01-2025"`
+	EndMonth    string  `form:"end_month" binding:"required" example:"12-2025"`
 }
 
 // CostSummaryResponse represents a response with a summarized cost

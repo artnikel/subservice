@@ -248,7 +248,6 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 // @Router /cost/summary [get]
 func (h *SubscriptionHandler) GetCostSummary(c *gin.Context) {
 	var req models.CostSummaryRequest
-
 	if err := c.ShouldBindQuery(&req); err != nil {
 		h.log.WithError(err).Warn("Invalid query parameters for cost summary")
 		c.JSON(http.StatusBadRequest, models.ErrorRequestResponse{Error: err.Error()})

@@ -3,12 +3,12 @@ package service
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	cerrors "github.com/artnikel/subservice/internal/errors"
 	"github.com/artnikel/subservice/internal/models"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +19,7 @@ type SubscriptionRepository interface {
 	Update(ctx context.Context, id uuid.UUID, updates *models.SubscriptionUpdates) (*models.Subscription, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	List(ctx context.Context, userID *uuid.UUID, serviceName *string, page, pageSize int) ([]models.Subscription, int, error)
-	GetCostSummary(ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth, endMonth string) (int, error)
+	GetCostSummary(ctx context.Context, userID *string, serviceName *string, startMonth, endMonth string) (int, error)
 }
 
 // SubscriptionService provides subscription business operations with logging and validation
@@ -154,7 +154,7 @@ func (s *SubscriptionService) DeleteSubscription(ctx context.Context, id uuid.UU
 	s.log.WithField("subscription_id", id).Info("Deleting subscription")
 
 	err := s.repo.Delete(ctx, id)
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		s.log.WithField("subscription_id", id).Warn("Subscription not found for deletion")
 		return cerrors.ErrSubscriptionNotFound
 	}
@@ -230,7 +230,7 @@ func (s *SubscriptionService) GetCostSummary(ctx context.Context, req *models.Co
 		return nil, cerrors.ErrEndMonthBeforeStart
 	}
 
-	totalCost, err := s.repo.GetCostSummary(ctx, req.UserID, req.ServiceName, req.StartMonth, req.EndMonth)
+	totalCost, err := s.repo.GetCostSummary(ctx, &req.UserID, req.ServiceName, req.StartMonth, req.EndMonth)
 	if err != nil {
 		s.log.WithError(err).Error("Failed to calculate cost summary")
 		return nil, fmt.Errorf("failed to calculate cost summary: %w", err)

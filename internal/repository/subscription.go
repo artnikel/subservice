@@ -3,12 +3,12 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
 	"github.com/artnikel/subservice/internal/models"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,7 +58,7 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*mo
 		&subscription.UpdatedAt,
 	)
 
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 
@@ -120,14 +120,14 @@ func (r *SubscriptionRepository) Update(ctx context.Context, id uuid.UUID, updat
 		&subscription.UpdatedAt,
 	)
 
-	if err == sql.ErrNoRows {
+	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
 
 	return subscription, err
 }
 
-// Delete removes a subscription by ID, returning sql.ErrNoRows if none deleted
+// Delete removes a subscription by ID, returning ErrNoRows if none deleted
 func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `DELETE FROM subscriptions WHERE id = $1`
 	result, err := r.pool.Exec(ctx, query, id)
@@ -138,7 +138,7 @@ func (r *SubscriptionRepository) Delete(ctx context.Context, id uuid.UUID) error
 	rowsAffected := result.RowsAffected()
 
 	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return pgx.ErrNoRows
 	}
 
 	return nil
@@ -219,14 +219,23 @@ func (r *SubscriptionRepository) List(
 
 // GetCostSummary calculates total subscription cost filtered by optional userID, serviceName and date range
 func (r *SubscriptionRepository) GetCostSummary(
-	ctx context.Context, userID *uuid.UUID, serviceName *string, startMonth, endMonth string) (int, error) {
+	ctx context.Context, userID *string, serviceName *string, startMonth, endMonth string) (int, error) {
+	var userUUID *uuid.UUID
+	if userID != nil && *userID != "" {
+		parsedUUID, err := uuid.Parse(*userID)
+		if err != nil {
+			return 0, fmt.Errorf("invalid user_id UUID format: %w", err)
+		}
+		userUUID = &parsedUUID
+	}
+
 	conditions := []string{}
 	args := []interface{}{}
 	argIndex := 1
 
-	if userID != nil {
+	if userUUID != nil {
 		conditions = append(conditions, fmt.Sprintf("user_id = $%d", argIndex))
-		args = append(args, *userID)
+		args = append(args, *userUUID)
 		argIndex++
 	}
 
